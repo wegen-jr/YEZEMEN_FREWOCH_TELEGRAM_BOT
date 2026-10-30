@@ -1,12 +1,25 @@
 from html import escape
+
 from bot.keyboards.public.content_actions import content_actions_keyboard
 from bot.keyboards.public.main_menu import mainMenuKeyboard
 from bot.keyboards.public.library_menu import libraryMenuKeyboard
 from bot.keyboards.public.poem_category_menu import build_category_keyboard
-from database.public.cotents import fetch_by_category,create_content
-from database.public.favourite import delete_favourite,is_favourite,create_favourite,fetch_favourite,fetch_all_favourites
 from bot.keyboards.public.share_work_menu import share_work_keyboard
 from bot.keyboards.share_work_categories import share_work_categories
+
+from database.public.cotents import (
+    fetch_by_category,
+    create_content
+)
+
+from database.public.favourite import (
+    delete_favourite,
+    is_favourite,
+    create_favourite,
+    fetch_favourite,
+    fetch_all_favourites
+)
+
 from database.public.users import is_user_banned
 LITERATURE_TYPES = {
     "poems": ("poem", "ግጥሞች", "Poems"),

@@ -1,122 +1,104 @@
 
-import sqlite3
-from database.connection import get_connection
+from psycopg import Error, errors
 
-
-# 1. Fetch one publication record
-fetch_publication_query = """
-    SELECT *
-    FROM channel_publications
-    WHERE content_id = ? AND channel_id = ?
-"""
-
-
-# 2. Fetch all publication records for a channel
-fetch_all_publications_query = """
-    SELECT *
-    FROM channel_publications
-    WHERE channel_id = ?
-    ORDER BY posted_at DESC
-"""
-
-
-# 3. Create a publication tracking record
-create_publication_query = """
-    INSERT INTO channel_publications (
-        content_id, channel_id, status
-    )
-    VALUES (?, ?, 'pending')
-"""
-
-
-# 4. Update a publication record
-update_publication_query = """
-    UPDATE channel_publications
-    SET
-        message_id = ?,
-        status = ?,
-        content_hash = ?,
-        last_error = ?,
-        posted_at = CASE
-            WHEN ? = 'posted' AND posted_at IS NULL
-            THEN CURRENT_TIMESTAMP
-            ELSE posted_at
-        END,
-        last_synced_at = CURRENT_TIMESTAMP
-    WHERE publication_id = ?
-"""
-
-
-# 5. Delete a publication tracking record
-delete_publication_query = """
-    DELETE FROM channel_publications
-    WHERE content_id = ? AND channel_id = ?
-"""
-
-
-# 6. Fetch records requiring synchronization
-fetch_pending_publications_query = """
-    SELECT *
-    FROM channel_publications
-    WHERE channel_id = ?
-    AND status IN ('pending', 'failed')
-    ORDER BY publication_id ASC
-"""
+from database.postgres_connection import get_postgres_connection
 
 
 def fetch_publication(content_id, channel_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
 
     try:
-        cursor.execute(
-            fetch_publication_query,
-            (content_id, channel_id)
-        )
-        return cursor.fetchone()
+        conn = get_postgres_connection()
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM channel_publications
+                WHERE content_id = %s
+                  AND channel_id = %s
+                """,
+                (content_id, channel_id)
+            )
+            return cursor.fetchone()
+
+    except Error as error:
+        print("Error fetching publication:", error)
+        return None
 
     finally:
-        cursor.close()
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def fetch_all_publications(channel_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
 
     try:
-        cursor.execute(
-            fetch_all_publications_query,
-            (channel_id,)
-        )
-        return cursor.fetchall()
+        conn = get_postgres_connection()
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM channel_publications
+                WHERE channel_id = %s
+                ORDER BY posted_at DESC NULLS LAST
+                """,
+                (channel_id,)
+            )
+            return cursor.fetchall()
+
+    except Error as error:
+        print("Error fetching channel publications:", error)
+        return []
 
     finally:
-        cursor.close()
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def create_publication(content_id, channel_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
 
     try:
-        cursor.execute(
-            create_publication_query,
-            (content_id, channel_id)
-        )
+        conn = get_postgres_connection()
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO channel_publications (
+                    content_id,
+                    channel_id,
+                    status
+                )
+                VALUES (%s, %s, 'pending')
+                RETURNING publication_id
+                """,
+                (content_id, channel_id)
+            )
+
+            publication_id = cursor.fetchone()[0]
 
         conn.commit()
+        return True, publication_id
 
-        return True, cursor.lastrowid
+    except errors.UniqueViolation as error:
+        if conn is not None:
+            conn.rollback()
 
-    except sqlite3.IntegrityError as error:
-        conn.rollback()
+        return False, str(error)
+
+    except Error as error:
+        if conn is not None:
+            conn.rollback()
+
+        print("Error creating publication:", error)
         return False, str(error)
 
     finally:
-        cursor.close()
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def update_publication(
@@ -126,69 +108,110 @@ def update_publication(
     content_hash,
     last_error=None
 ):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
 
     try:
-        cursor.execute(
-            update_publication_query,
-            (
-                message_id,
-                status,
-                content_hash,
-                last_error,
-                status,
-                publication_id
+        conn = get_postgres_connection()
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE channel_publications
+                SET message_id = %s,
+                    status = %s,
+                    content_hash = %s,
+                    last_error = %s,
+                    posted_at = CASE
+                        WHEN %s = 'posted' AND posted_at IS NULL
+                        THEN CURRENT_TIMESTAMP
+                        ELSE posted_at
+                    END,
+                    last_synced_at = CURRENT_TIMESTAMP
+                WHERE publication_id = %s
+                """,
+                (
+                    message_id,
+                    status,
+                    content_hash,
+                    last_error,
+                    status,
+                    publication_id
+                )
             )
-        )
+
+            updated = cursor.rowcount > 0
 
         conn.commit()
+        return updated
 
-        return cursor.rowcount > 0
+    except Error as error:
+        if conn is not None:
+            conn.rollback()
 
-    except sqlite3.Error:
-        conn.rollback()
-        raise
+        print("Error updating publication:", error)
+        return False
 
     finally:
-        cursor.close()
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def delete_publication(content_id, channel_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
 
     try:
-        cursor.execute(
-            delete_publication_query,
-            (content_id, channel_id)
-        )
+        conn = get_postgres_connection()
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM channel_publications
+                WHERE content_id = %s
+                  AND channel_id = %s
+                """,
+                (content_id, channel_id)
+            )
+
+            deleted = cursor.rowcount > 0
 
         conn.commit()
+        return deleted
 
-        return cursor.rowcount > 0
+    except Error as error:
+        if conn is not None:
+            conn.rollback()
 
-    except sqlite3.Error:
-        conn.rollback()
-        raise
+        print("Error deleting publication:", error)
+        return False
 
     finally:
-        cursor.close()
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def fetch_pending_publications(channel_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
 
     try:
-        cursor.execute(
-            fetch_pending_publications_query,
-            (channel_id,)
-        )
-        return cursor.fetchall()
+        conn = get_postgres_connection()
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM channel_publications
+                WHERE channel_id = %s
+                  AND status IN ('pending', 'failed')
+                ORDER BY publication_id ASC
+                """,
+                (channel_id,)
+            )
+            return cursor.fetchall()
+
+    except Error as error:
+        print("Error fetching pending publications:", error)
+        return []
 
     finally:
-        cursor.close()
-        conn.close()
+        if conn is not None:
+            conn.close()

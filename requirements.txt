@@ -1,2 +1,5 @@
 pyTelegramBotAPI
 python-dotenv
+psycopg[binary]>=3.2,<4
+Flask
+gunicorn

@@ -12,5 +12,5 @@ __pycache__/
 # SQLite databases
 *.db
 *.sqlite
-*.sqlite3
+*.sqlite3t
 

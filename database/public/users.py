@@ -1,99 +1,139 @@
-import sqlite3
-from database.connection import get_connection
 
-user_insert_query="""
-    INSERT INTO users(user_id, username, first_name, last_seen_at)
-    VALUES(?, ?, ?, ?)
-    ON CONFLICT(user_id)
-    DO UPDATE SET 
-        username=excluded.username,
-        first_name=excluded.first_name, 
-        last_seen_at=excluded.last_seen_at
+from database.postgres_connection import get_postgres_connection
+
+
+user_insert_query = """
+    INSERT INTO users (
+        user_id, username, first_name, last_seen_at
+    )
+    VALUES (%s, %s, %s, %s)
+    ON CONFLICT (user_id)
+    DO UPDATE SET
+        username = EXCLUDED.username,
+        first_name = EXCLUDED.first_name,
+        last_seen_at = EXCLUDED.last_seen_at
 """
-user_fetch_query="""
+
+user_fetch_query = """
     SELECT * FROM users
 """
-user_fetch_by_id="""
-    SELECT username, first_name, last_seen_at, is_banned FROM users WHERE user_id=?
+
+user_fetch_by_id = """
+    SELECT username, first_name, last_seen_at, is_banned
+    FROM users
+    WHERE user_id = %s
 """
-user_profile_update_query="""
-    UPDATE users SET username=?, first_name=? WHERE user_id=?
+
+user_profile_update_query = """
+    UPDATE users
+    SET username = %s, first_name = %s
+    WHERE user_id = %s
 """
-delete_user_query="""
-    DELETE FROM users WHERE user_id=?
+
+delete_user_query = """
+    DELETE FROM users
+    WHERE user_id = %s
 """
+
 
 def is_user_banned(user_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = get_postgres_connection()
 
-    cursor.execute(
-        "SELECT is_banned FROM users WHERE user_id = ?",
-        (user_id,)
-    )
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT is_banned FROM users WHERE user_id = %s",
+                (user_id,)
+            )
 
-    result = cursor.fetchone()
+            result = cursor.fetchone()
 
-    cursor.close()
-    conn.close()
+        return bool(result and result[0])
 
-    return bool(result and result[0])
+    finally:
+        conn.close()
 
-def create_or_update_user(user_id,username,first_name,last_seen_at):
-    data=[
-        user_id,
-        username,
-        first_name,
-        last_seen_at
-    ]
-    conn=get_connection()
-    cursor=conn.cursor()
-    cursor.execute(user_insert_query,data)
-    conn.commit()
-    cursor.close()
-    conn.close()
+
+def create_or_update_user(user_id, username, first_name, last_seen_at):
+    conn = get_postgres_connection()
+
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                user_insert_query,
+                (user_id, username, first_name, last_seen_at)
+            )
+
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
 
 def fetch_users_data():
-    conn=get_connection()
-    cursor=conn.cursor()
-    cursor.execute(user_fetch_query)
-    data=cursor.fetchall()
-    cursor.close()
-    conn.close()
+    conn = get_postgres_connection()
 
-    return data
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(user_fetch_query)
+            data = cursor.fetchall()
+
+        return data
+
+    finally:
+        conn.close()
+
 
 def fetch_specific_user_data(user_id):
-    conn=get_connection()
-    cursor=conn.cursor()
-    cursor.execute(user_fetch_by_id,(user_id,))
-    data=cursor.fetchone()
+    conn = get_postgres_connection()
 
-    conn.close()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(user_fetch_by_id, (user_id,))
+            data = cursor.fetchone()
 
-    return data
+        return data
+
+    finally:
+        conn.close()
 
 
-def update_profile(user_id,username,first_name):
-    data=[
-        username,
-        first_name,
-        user_id
-    ]
-    conn=get_connection()
-    cursor=conn.cursor()
-    cursor.execute(user_profile_update_query,data)
+def update_profile(user_id, username, first_name):
+    conn = get_postgres_connection()
 
-    conn.commit()
-    cursor.close()
-    conn.close()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                user_profile_update_query,
+                (username, first_name, user_id)
+            )
+
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
 
 def delete_user(user_id):
-    conn=get_connection()
-    cursor=conn.cursor()
-    cursor.execute(delete_user_query,(user_id,))
+    conn = get_postgres_connection()
 
-    conn.commit()
-    cursor.close()
-    conn.close()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(delete_user_query, (user_id,))
 
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()

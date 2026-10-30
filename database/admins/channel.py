@@ -1,33 +1,54 @@
 
-from database.connection import get_connection
+from psycopg import Error
+from database.postgres_connection import get_postgres_connection
 
 
 def fetch_channel_statistics(channel_id):
-    conn = get_connection()
+    conn = None
 
     try:
-        cursor = conn.cursor()
+        conn = get_postgres_connection()
 
-        cursor.execute("""
-            SELECT
-                COUNT(*),
-                SUM(CASE WHEN status = 'posted' THEN 1 ELSE 0 END),
-                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END),
-                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END),
-                SUM(CASE WHEN status = 'removed' THEN 1 ELSE 0 END)
-            FROM channel_publications
-            WHERE channel_id = ?
-        """, (str(channel_id),))
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    COUNT(*),
+                    COUNT(*) FILTER (WHERE status = 'posted'),
+                    COUNT(*) FILTER (WHERE status = 'pending'),
+                    COUNT(*) FILTER (WHERE status = 'failed'),
+                    COUNT(*) FILTER (WHERE status = 'removed')
+                FROM channel_publications
+                WHERE channel_id = %s
+                """,
+                (str(channel_id),)
+            )
 
-        result = cursor.fetchone()
+            publication_stats = cursor.fetchone()
 
-        return {
-            "total": result[0] or 0,
-            "posted": result[1] or 0,
-            "pending": result[2] or 0,
-            "failed": result[3] or 0,
-            "removed": result[4] or 0
-        }
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM contents
+                WHERE is_published = 1
+                """
+            )
+
+            published_count = cursor.fetchone()[0]
+
+            return {
+                "total": publication_stats[0] or 0,
+                "posted": publication_stats[1] or 0,
+                "published": published_count or 0,
+                "pending": publication_stats[2] or 0,
+                "failed": publication_stats[3] or 0,
+                "removed": publication_stats[4] or 0
+            }
+
+    except Error as error:
+        print("Error fetching channel statistics:", error)
+        raise
 
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
