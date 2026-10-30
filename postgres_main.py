@@ -56,6 +56,20 @@ content_handler(bot)
 published_works_handler(bot)
 channel_administration_handler(bot)
 
+# Register Telegram webhook
+webhook_endpoint = (
+    f"{WEBHOOK_URL.rstrip('/')}/{WEBHOOK_SECRET}"
+)
+
+webhook_registered = bot.set_webhook(
+    url=webhook_endpoint,
+    secret_token=WEBHOOK_SECRET
+)
+
+if not webhook_registered:
+    raise RuntimeError("Failed to register Telegram webhook.")
+
+print("Telegram webhook registered successfully.")
 
 @app.route("/", methods=["GET"])
 def home():
