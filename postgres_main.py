@@ -56,21 +56,6 @@ content_handler(bot)
 published_works_handler(bot)
 channel_administration_handler(bot)
 
-@bot.message_handler(func=lambda message: True)
-def debug_all_messages(message):
-    print(
-        "MESSAGE REACHED GENERAL HANDLER:",
-        repr(message.text)
-    )
-
-@bot.message_handler(commands=['ping'])
-def ping_handler(message):
-    print("PING HANDLER EXECUTED")
-
-    bot.reply_to(
-        message,
-        "YEZEMEN FREWOCH is responding!"
-    )
 
 # Register Telegram webhook
 webhook_endpoint = (
