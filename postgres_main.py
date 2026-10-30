@@ -89,12 +89,24 @@ def telegram_webhook():
     if not request.is_json:
         abort(400)
 
-    update = telebot.types.Update.de_json(request.get_json())
+    payload = request.get_json(silent=True)
 
-    bot.process_new_updates([update])
+    if not isinstance(payload, dict) or "update_id" not in payload:
+        abort(400)
+
+    update = telebot.types.Update.de_json(payload)
+
+    print("Received Telegram update:", update.update_id)
+
+    try:
+        bot.process_new_updates([update])
+        print("Telegram update processed successfully.")
+
+    except Exception as error:
+        print("Telegram update processing failed:", repr(error))
+        raise
 
     return "OK", 200
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
